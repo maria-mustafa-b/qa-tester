@@ -11,7 +11,7 @@ in-scope pages and produces reproducible findings before deployment. It combines
 visual, content, performance, crash, accessibility and passive security signals in one JSON and
 HTML report.
 
-This repository contains the second working milestone. The current engine is deterministic; an AI
+This repository contains the third working milestone. The current engine is deterministic; an AI
 planning and triage layer will be introduced only after the underlying evidence is reliable.
 
 ## Current capabilities
@@ -30,6 +30,9 @@ planning and triage layer will be introduced only after the underlying evidence 
 - Broken image and placeholder-content detection.
 - Missing security header, insecure transport and exposed credential-pattern checks.
 - Configurable TTFB, FCP, LCP, CLS, transfer-size and request-count budgets.
+- Declarative smoke flows with navigation, input, selection, checking and UI assertions.
+- Same-scope flow navigation, blocked-path enforcement, submit guards and secret redaction.
+- Screenshot baseline creation and pixel-level visual regression detection with diff evidence.
 - Deterministic JSON and standalone HTML reports.
 - Finding filters, category totals and per-page performance metrics in reports.
 - CI-friendly exit codes based on configurable severity.
@@ -94,8 +97,8 @@ preflight-qa scan \
 ```
 
 The demo intentionally contains a JavaScript exception, a broken link, a broken image, missing
-metadata, inaccessible controls, placeholder text and responsive overflow. It exists only to verify
-that findings and evidence are generated correctly.
+metadata, inaccessible controls, placeholder text and responsive overflow. Its configured smoke
+flow also verifies navigation to the healthy page.
 
 ## Configuration
 
@@ -126,6 +129,12 @@ performance_budgets:
   cls: 0.1
   transfer_kb: 3000
   request_count: 100
+visual_regression:
+  enabled: false
+  baseline_dir: visual-baselines
+  update_baselines: false
+  max_changed_pixel_ratio: 0.01
+  pixel_threshold: 25
 viewports:
   - name: desktop
     width: 1440
@@ -133,11 +142,75 @@ viewports:
   - name: mobile
     width: 390
     height: 844
+flows:
+  - name: healthy page navigation
+    start_path: /
+    viewport: desktop
+    steps:
+      - action: assert_visible
+        selector: h1
+      - action: click
+        selector: 'a[href="/healthy.html"]'
+      - action: assert_url
+        value: /healthy.html
+      - action: assert_text
+        selector: main
+        value: Healthy page
 fail_on: high
 ```
 
 `fail_on` accepts `critical`, `high`, `medium`, `low` or `never`. This lets a CI pipeline block a
 release when findings meet the selected threshold.
+
+## Smoke flows
+
+Smoke flows test critical user journeys before the crawler begins. Supported actions are `goto`,
+`click`, `fill`, `select`, `check`, `assert_visible`, `assert_text` and `assert_url`. Locators use CSS
+selectors and Playwright automatically waits for elements to become actionable.
+
+Keep credentials outside YAML by referencing environment variables:
+
+```yaml
+flows:
+  - name: authorized login
+    start_path: /login
+    allow_submit: true
+    steps:
+      - action: fill
+        selector: '#email'
+        value_from_env: PREFLIGHT_TEST_EMAIL
+      - action: fill
+        selector: '#password'
+        value_from_env: PREFLIGHT_TEST_PASSWORD
+      - action: click
+        selector: 'button[type="submit"]'
+      - action: assert_url
+        value: /dashboard
+```
+
+Submit-like controls are blocked unless that flow sets `allow_submit: true`. Even then, external
+hosts and configured blocked paths remain prohibited. Use dedicated test accounts and never point a
+flow at real payments, destructive controls or production data. Failure screenshots mask form
+fields, and configured input values are excluded from structured results and redacted from errors
+and recorded flow URLs.
+
+## Visual regression baselines
+
+Visual comparison is opt-in. Set `visual_regression.enabled: true`, then deliberately create or
+refresh approved screenshots with:
+
+```bash
+preflight-qa scan \
+  --config preflight.example.yml \
+  --authorized \
+  --update-baselines \
+  --output reports/baseline-review
+```
+
+Review and commit the generated `visual-baselines/` directory. Future scans compare the same URL and
+viewport against those images. Changes above `max_changed_pixel_ratio` create a visual finding with
+the current screenshot, approved baseline and a red-highlighted diff. `pixel_threshold` ignores
+small per-channel rendering noise. Baselines are never replaced during a normal scan.
 
 ## Exit codes
 
@@ -154,9 +227,11 @@ release when findings meet the selected threshold.
 CLI
  └── Configuration and scope validation
       └── Playwright crawler
+           ├── Declarative smoke-flow runner
            ├── Runtime and functional evidence
            ├── Content, form and axe-core accessibility checks
            ├── Responsive visual checks
+           ├── Screenshot baseline comparison
            ├── Passive security checks
            └── Browser performance budgets
                 └── Normalized findings
@@ -172,9 +247,11 @@ preflight_qa/
 ├── templates/       HTML report template
 ├── cli.py           command-line interface and exit codes
 ├── config.py        typed YAML configuration
+├── flows.py         safe smoke journeys and assertions
 ├── models.py        report schema and finding model
 ├── reporting.py     JSON and HTML output
 ├── scanner.py       Playwright crawl and evidence collection
+├── visual_regression.py  baseline image comparison and diffs
 └── urls.py          URL normalization and scope controls
 ```
 
@@ -186,7 +263,8 @@ pytest -q
 ```
 
 The unit suite covers configuration validation, URL scope enforcement, axe result normalization,
-form rules, performance budgets, secret redaction and report creation.
+form rules, performance budgets, flow validation, visual diffs, scope safety, secret redaction and
+report creation. CI also runs a real-browser smoke-flow integration test.
 
 ## Report semantics
 
@@ -211,8 +289,8 @@ redacted before it is written to disk.
 - [x] axe-core WCAG rule integration
 - [x] Browser-native Core Web Vitals and page-weight budgets
 - [x] Passive form analysis
-- [ ] Developer-defined smoke flows
-- [ ] Baseline visual regression comparison
+- [x] Developer-defined smoke flows
+- [x] Baseline visual regression comparison
 - [ ] Authenticated multi-role access-control checks
 - [ ] OWASP ZAP passive-scan integration
 - [ ] GitHub pull-request quality gates
@@ -222,13 +300,14 @@ redacted before it is written to disk.
 ## Current limitations
 
 - The scanner does not prove that a website is secure or WCAG compliant.
-- It does not submit forms or infer application-specific business rules; passive form checks inspect
-  markup only.
-- Visual checks use browser geometry; pixel-baseline comparison is planned.
+- Passive scanning does not submit forms or infer application-specific business rules. A smoke flow
+  can submit only when explicitly enabled for that authorized flow.
+- Visual baselines are viewport-specific and can still vary across operating systems, fonts and
+  browser versions; establish and compare them in a consistent environment.
 - Performance metrics are single synthetic browser observations, not a Lighthouse score or real-user
   field data.
 - The crawler does not test native mobile or desktop applications.
-- Dynamic applications may require authentication and workflow definitions in future releases.
+- Authenticated role comparison and saved browser sessions are not implemented yet.
 
 Automated output must be reviewed by a developer or tester before a release decision.
 

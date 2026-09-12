@@ -22,6 +22,12 @@ performance_budgets:
   cls: 0.1
   transfer_kb: 3000
   request_count: 100
+visual_regression:
+  enabled: false
+  baseline_dir: visual-baselines
+  update_baselines: false
+  max_changed_pixel_ratio: 0.01
+  pixel_threshold: 25
 viewports:
   - name: desktop
     width: 1440
@@ -29,4 +35,18 @@ viewports:
   - name: mobile
     width: 390
     height: 844
+flows:
+  - name: healthy page navigation
+    start_path: /
+    viewport: desktop
+    steps:
+      - action: assert_visible
+        selector: h1
+      - action: click
+        selector: 'a[href="/healthy.html"]'
+      - action: assert_url
+        value: /healthy.html
+      - action: assert_text
+        selector: main
+        value: Healthy page
 fail_on: high

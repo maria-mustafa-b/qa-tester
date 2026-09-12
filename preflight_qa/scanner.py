@@ -16,6 +16,7 @@ from preflight_qa.checks.performance import run_performance_checks
 from preflight_qa.checks.security import run_security_checks
 from preflight_qa.checks.visual import run_visual_checks
 from preflight_qa.config import ScanConfig, Viewport
+from preflight_qa.flows import run_smoke_flows
 from preflight_qa.models import (
     Category,
     Confidence,
@@ -25,6 +26,7 @@ from preflight_qa.models import (
     Severity,
 )
 from preflight_qa.urls import normalize_url, url_is_allowed
+from preflight_qa.visual_regression import compare_visual_baseline
 
 SNAPSHOT_SCRIPT = """
 () => {
@@ -149,6 +151,10 @@ class WebScanner:
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(headless=self.config.headless)
             try:
+                flow_results, flow_findings = await run_smoke_flows(browser, self.config, self.output_dir)
+                self.report.flows.extend(flow_results)
+                for finding in flow_findings:
+                    self.report.add_finding(finding)
                 await self._crawl(browser)
             finally:
                 await browser.close()
@@ -230,6 +236,16 @@ class WebScanner:
             headers = await response.all_headers() if response else {}
             screenshot = await self._take_screenshot(page, url, viewport.name)
             final_url = page.url
+            visual_comparison: dict[str, object] = {}
+            visual_finding: Finding | None = None
+            if self.config.visual_regression.enabled and screenshot:
+                visual_comparison, visual_finding = compare_visual_baseline(
+                    url=final_url,
+                    viewport=viewport.name,
+                    screenshot_path=self.output_dir / screenshot,
+                    output_dir=self.output_dir,
+                    config=self.config.visual_regression,
+                )
 
             self.report.pages.append(
                 PageResult(
@@ -241,8 +257,13 @@ class WebScanner:
                     viewport=viewport.name,
                     screenshot=screenshot,
                     performance=performance,
+                    visual_comparison=visual_comparison,
                 )
             )
+
+            if visual_finding:
+                self._attach_screenshot(visual_finding, screenshot)
+                self.report.add_finding(visual_finding)
 
             for finding in run_content_checks(snapshot, final_url, viewport.name):
                 self._attach_screenshot(finding, screenshot)

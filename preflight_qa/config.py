@@ -30,6 +30,83 @@ class PerformanceBudgets:
             raise ValueError("performance budget cls must be greater than zero")
 
 
+@dataclass(frozen=True, slots=True)
+class VisualRegressionConfig:
+    enabled: bool = False
+    baseline_dir: str = "visual-baselines"
+    update_baselines: bool = False
+    max_changed_pixel_ratio: float = 0.01
+    pixel_threshold: int = 25
+
+    def validate(self) -> None:
+        if not self.baseline_dir.strip() or self.baseline_dir.strip() in {".", "/"}:
+            raise ValueError("visual_regression baseline_dir must be a specific directory")
+        if not 0 <= self.max_changed_pixel_ratio <= 1:
+            raise ValueError("visual_regression max_changed_pixel_ratio must be between 0 and 1")
+        if not 0 <= self.pixel_threshold <= 255:
+            raise ValueError("visual_regression pixel_threshold must be between 0 and 255")
+        if self.update_baselines and not self.enabled:
+            raise ValueError("visual_regression must be enabled when update_baselines is true")
+
+
+FLOW_ACTIONS = {
+    "goto",
+    "click",
+    "fill",
+    "select",
+    "check",
+    "assert_visible",
+    "assert_text",
+    "assert_url",
+}
+SELECTOR_ACTIONS = {"click", "fill", "select", "check", "assert_visible", "assert_text"}
+VALUE_ACTIONS = {"goto", "fill", "select", "assert_text", "assert_url"}
+
+
+@dataclass(frozen=True, slots=True)
+class FlowStep:
+    action: str
+    selector: str | None = None
+    value: str | None = None
+    value_from_env: str | None = None
+    timeout_ms: int | None = None
+
+    def validate(self, flow_name: str, index: int) -> None:
+        label = f"flow {flow_name!r} step {index}"
+        if self.action not in FLOW_ACTIONS:
+            raise ValueError(f"{label} uses unsupported action {self.action!r}")
+        if self.action in SELECTOR_ACTIONS and not self.selector:
+            raise ValueError(f"{label} requires selector")
+        has_value = self.value is not None or self.value_from_env is not None
+        if self.action in VALUE_ACTIONS and not has_value:
+            raise ValueError(f"{label} requires value or value_from_env")
+        if self.value is not None and self.value_from_env is not None:
+            raise ValueError(f"{label} cannot set both value and value_from_env")
+        if self.value_from_env is not None and self.action not in {"fill", "select"}:
+            raise ValueError(f"{label} only supports value_from_env for fill or select")
+        if self.timeout_ms is not None and not 100 <= self.timeout_ms <= 120_000:
+            raise ValueError(f"{label} timeout_ms must be between 100 and 120000")
+
+
+@dataclass(frozen=True, slots=True)
+class SmokeFlow:
+    name: str
+    start_path: str = "/"
+    viewport: str = "desktop"
+    allow_submit: bool = False
+    steps: tuple[FlowStep, ...] = ()
+
+    def validate(self, viewport_names: set[str]) -> None:
+        if not self.name.strip():
+            raise ValueError("flow name cannot be empty")
+        if self.viewport not in viewport_names:
+            raise ValueError(f"flow {self.name!r} references unknown viewport {self.viewport!r}")
+        if not self.steps:
+            raise ValueError(f"flow {self.name!r} must contain at least one step")
+        for index, step in enumerate(self.steps, start=1):
+            step.validate(self.name, index)
+
+
 @dataclass(slots=True)
 class ScanConfig:
     target: str
@@ -44,6 +121,8 @@ class ScanConfig:
     )
     accessibility_tags: list[str] = field(default_factory=lambda: ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
     performance_budgets: PerformanceBudgets = field(default_factory=PerformanceBudgets)
+    visual_regression: VisualRegressionConfig = field(default_factory=VisualRegressionConfig)
+    flows: list[SmokeFlow] = field(default_factory=list)
     fail_on: str = "high"
 
     def validate(self) -> None:
@@ -66,6 +145,15 @@ class ScanConfig:
         ):
             raise ValueError("accessibility_tags must contain at least one non-empty tag")
         self.performance_budgets.validate()
+        self.visual_regression.validate()
+        viewport_names = {viewport.name for viewport in self.viewports}
+        if len(viewport_names) != len(self.viewports):
+            raise ValueError("viewport names must be unique")
+        flow_names = {flow.name for flow in self.flows}
+        if len(flow_names) != len(self.flows):
+            raise ValueError("flow names must be unique")
+        for flow in self.flows:
+            flow.validate(viewport_names)
         if not self.allowed_hosts:
             self.allowed_hosts = [parsed.hostname]
 
@@ -102,6 +190,34 @@ def load_config(path: Path | None, target_override: str | None = None) -> ScanCo
         except TypeError as exc:
             raise ValueError(f"invalid performance budget configuration: {exc}") from exc
 
+    visual_data = raw.pop("visual_regression", None)
+    visual_regression = None
+    if visual_data is not None:
+        if not isinstance(visual_data, dict):
+            raise ValueError("visual_regression must be a mapping")
+        try:
+            visual_regression = VisualRegressionConfig(**visual_data)
+        except TypeError as exc:
+            raise ValueError(f"invalid visual regression configuration: {exc}") from exc
+
+    flow_data = raw.pop("flows", None)
+    flows: list[SmokeFlow] = []
+    if flow_data is not None:
+        if not isinstance(flow_data, list):
+            raise ValueError("flows must be a list")
+        try:
+            for item in flow_data:
+                if not isinstance(item, dict):
+                    raise TypeError("each flow must be a mapping")
+                item = dict(item)
+                step_data = item.pop("steps", [])
+                if not isinstance(step_data, list):
+                    raise TypeError("flow steps must be a list")
+                steps = tuple(FlowStep(**step) for step in step_data)
+                flows.append(SmokeFlow(steps=steps, **item))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"invalid flow configuration: {exc}") from exc
+
     allowed_fields = {
         "max_pages",
         "timeout_ms",
@@ -121,5 +237,8 @@ def load_config(path: Path | None, target_override: str | None = None) -> ScanCo
         config.viewports = viewports
     if budgets is not None:
         config.performance_budgets = budgets
+    if visual_regression is not None:
+        config.visual_regression = visual_regression
+    config.flows = flows
     config.validate()
     return config

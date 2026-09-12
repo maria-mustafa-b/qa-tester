@@ -44,7 +44,8 @@ class Finding:
     viewport: str | None = None
 
     def fingerprint(self) -> tuple[str, str, str | None, str]:
-        return (self.rule_id, self.url, self.viewport, str(self.evidence.get("element", "")))
+        identity = self.evidence.get("element") or self.evidence.get("flow", "")
+        return (self.rule_id, self.url, self.viewport, str(identity))
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -64,6 +65,34 @@ class PageResult:
     viewport: str
     screenshot: str | None = None
     performance: dict[str, Any] = field(default_factory=dict)
+    visual_comparison: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
+class FlowStepResult:
+    index: int
+    action: str
+    status: str
+    duration_ms: int
+    error: str | None = None
+    screenshot: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
+class FlowResult:
+    name: str
+    viewport: str
+    start_url: str
+    final_url: str
+    status: str
+    duration_ms: int
+    steps: list[FlowStepResult] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -76,6 +105,7 @@ class ScanReport:
     finished_at: str | None = None
     pages: list[PageResult] = field(default_factory=list)
     findings: list[Finding] = field(default_factory=list)
+    flows: list[FlowResult] = field(default_factory=list)
     skipped_urls: list[dict[str, str]] = field(default_factory=list)
     scanner_errors: list[dict[str, str]] = field(default_factory=list)
 
@@ -104,8 +134,9 @@ class ScanReport:
         for finding in findings:
             counts[finding.severity.value] += 1
             category_counts[finding.category.value] += 1
+        passed_flows = sum(flow.status == "passed" for flow in self.flows)
         return {
-            "schema_version": "1.1",
+            "schema_version": "1.2",
             "scanner": {"name": "Preflight QA", "version": __import__("preflight_qa").__version__},
             "target": self.target,
             "started_at": self.started_at,
@@ -116,8 +147,12 @@ class ScanReport:
                 "by_severity": counts,
                 "by_category": category_counts,
                 "scanner_errors": len(self.scanner_errors),
+                "flows_run": len(self.flows),
+                "flows_passed": passed_flows,
+                "flows_failed": len(self.flows) - passed_flows,
             },
             "pages": [page.to_dict() for page in self.pages],
+            "flows": [flow.to_dict() for flow in self.flows],
             "findings": [finding.to_dict() for finding in findings],
             "skipped_urls": self.skipped_urls,
             "scanner_errors": self.scanner_errors,

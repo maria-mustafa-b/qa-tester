@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -23,6 +24,11 @@ def build_parser() -> argparse.ArgumentParser:
     scan_parser.add_argument("--config", type=Path, help="YAML scan configuration")
     scan_parser.add_argument("--output", type=Path, help="report output directory")
     scan_parser.add_argument(
+        "--update-baselines",
+        action="store_true",
+        help="create or replace approved visual baselines for this run",
+    )
+    scan_parser.add_argument(
         "--authorized",
         action="store_true",
         help="confirm you own or have explicit permission to test the target",
@@ -40,6 +46,8 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         config = load_config(args.config, args.url)
+        if args.update_baselines:
+            config.visual_regression = replace(config.visual_regression, enabled=True, update_baselines=True)
         output_dir = args.output or Path("reports") / datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
         print(f"[preflight] target: {config.target}")
         print(f"[preflight] page limit: {config.max_pages}")
@@ -48,6 +56,7 @@ def main(argv: list[str] | None = None) -> int:
         json_path, html_path = write_reports(report, output_dir)
         data = report.to_dict()
         print(f"[preflight] pages tested: {data['summary']['pages_tested']}")
+        print(f"[preflight] smoke flows: {data['summary']['flows_passed']}/{data['summary']['flows_run']} passed")
         print(f"[preflight] findings: {data['summary']['findings']}")
         print(f"[preflight] JSON: {json_path}")
         print(f"[preflight] HTML: {html_path}")

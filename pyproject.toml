@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "preflight-qa"
-version = "0.2.0"
+version = "0.3.0"
 description = "Evidence-first pre-release quality scanner for web applications"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,6 +12,7 @@ license = { text = "Apache-2.0" }
 authors = [{ name = "Maria Mustafa" }]
 dependencies = [
   "Jinja2>=3.1,<4",
+  "Pillow>=12.3,<13",
   "playwright>=1.49,<2",
   "PyYAML>=6.0,<7",
 ]
