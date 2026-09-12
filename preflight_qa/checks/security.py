@@ -20,9 +20,7 @@ SECRET_PATTERNS = {
 }
 
 
-def run_security_checks(
-    *, url: str, headers: dict[str, str], html: str, viewport: str
-) -> list[Finding]:
+def run_security_checks(*, url: str, headers: dict[str, str], html: str, viewport: str) -> list[Finding]:
     findings: list[Finding] = []
     normalized = {key.lower(): value for key, value in headers.items()}
     parsed = urlparse(url)
@@ -97,4 +95,3 @@ def _redact(value: str) -> str:
     if len(value) < 10:
         return "***"
     return f"{value[:4]}…{value[-4:]}"
-

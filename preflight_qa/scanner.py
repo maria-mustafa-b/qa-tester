@@ -9,7 +9,10 @@ from urllib.parse import urlparse
 
 from playwright.async_api import Browser, Page, Response, async_playwright
 
+from preflight_qa.checks.accessibility import run_accessibility_checks
 from preflight_qa.checks.content import run_content_checks
+from preflight_qa.checks.forms import run_form_checks
+from preflight_qa.checks.performance import run_performance_checks
 from preflight_qa.checks.security import run_security_checks
 from preflight_qa.checks.visual import run_visual_checks
 from preflight_qa.config import ScanConfig, Viewport
@@ -51,6 +54,23 @@ SNAPSHOT_SCRIPT = """
       complete: img.complete,
       natural_width: img.naturalWidth,
     })),
+    forms: [...document.forms].map(form => ({
+      selector: selector(form),
+      action: form.getAttribute('action') || '',
+      method: (form.getAttribute('method') || 'get').toLowerCase(),
+      controls: [...form.elements]
+        .filter(el => ['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(el.tagName))
+        .map(el => ({
+          selector: selector(el),
+          type: (el.getAttribute('type') || el.tagName.toLowerCase()).toLowerCase(),
+          name: el.getAttribute('name') || '',
+          required: Boolean(el.required),
+          disabled: Boolean(el.disabled),
+          autocomplete: el.getAttribute('autocomplete') || '',
+          min: el.getAttribute('min'),
+          max: el.getAttribute('max'),
+        })),
+    })),
     empty_interactives: [...document.querySelectorAll('a[href], button')]
       .filter(el => visible(el))
       .filter(el => !(el.innerText || '').trim() && !el.getAttribute('aria-label') && !el.getAttribute('title'))
@@ -60,6 +80,58 @@ SNAPSHOT_SCRIPT = """
       .map(el => ({ selector: selector(el), right: Math.round(el.getBoundingClientRect().right) }))
       .filter(item => item.right > window.innerWidth + 1)
       .slice(0, 20),
+  };
+}
+"""
+
+PERFORMANCE_INIT_SCRIPT = """
+(() => {
+  window.__preflightPerformance = { lcp_ms: null, cls: 0, long_task_ms: 0, long_task_count: 0 };
+  try {
+    new PerformanceObserver(list => {
+      const entries = list.getEntries();
+      const last = entries[entries.length - 1];
+      if (last) window.__preflightPerformance.lcp_ms = last.startTime;
+    }).observe({ type: 'largest-contentful-paint', buffered: true });
+  } catch (_) {}
+  try {
+    new PerformanceObserver(list => {
+      for (const entry of list.getEntries()) {
+        if (!entry.hadRecentInput) window.__preflightPerformance.cls += entry.value;
+      }
+    }).observe({ type: 'layout-shift', buffered: true });
+  } catch (_) {}
+  try {
+    new PerformanceObserver(list => {
+      for (const entry of list.getEntries()) {
+        window.__preflightPerformance.long_task_ms += entry.duration;
+        window.__preflightPerformance.long_task_count += 1;
+      }
+    }).observe({ type: 'longtask', buffered: true });
+  } catch (_) {}
+})();
+"""
+
+PERFORMANCE_SNAPSHOT_SCRIPT = """
+() => {
+  const navigation = performance.getEntriesByType('navigation')[0];
+  const resources = performance.getEntriesByType('resource');
+  const paints = performance.getEntriesByType('paint');
+  const fcp = paints.find(entry => entry.name === 'first-contentful-paint');
+  const observed = window.__preflightPerformance || {};
+  const transferBytes = resources.reduce((total, item) => total + (item.transferSize || 0), 0)
+    + (navigation?.transferSize || 0);
+  return {
+    ttfb_ms: navigation ? navigation.responseStart : null,
+    dom_content_loaded_ms: navigation ? navigation.domContentLoadedEventEnd : null,
+    load_ms: navigation?.loadEventEnd || null,
+    fcp_ms: fcp?.startTime || null,
+    lcp_ms: observed.lcp_ms ?? null,
+    cls: observed.cls ?? null,
+    transfer_kb: Math.round((transferBytes / 1024) * 100) / 100,
+    request_count: resources.length + 1,
+    long_task_ms: Math.round((observed.long_task_ms || 0) * 100) / 100,
+    long_task_count: observed.long_task_count || 0,
   };
 }
 """
@@ -104,9 +176,7 @@ class WebScanner:
                 normalized = normalize_url(url, candidate)
                 if not normalized or normalized in visited or normalized in queue:
                     continue
-                if url_is_allowed(
-                    normalized, self.config.allowed_hosts, self.config.blocked_url_patterns
-                ):
+                if url_is_allowed(normalized, self.config.allowed_hosts, self.config.blocked_url_patterns):
                     queue.append(normalized)
                 else:
                     self.report.skipped_urls.append(
@@ -118,6 +188,7 @@ class WebScanner:
             viewport={"width": viewport.width, "height": viewport.height},
             ignore_https_errors=self.config.ignore_https_errors,
         )
+        await context.add_init_script(script=PERFORMANCE_INIT_SCRIPT)
         page = await context.new_page()
         console_errors: list[str] = []
         page_errors: list[str] = []
@@ -136,22 +207,25 @@ class WebScanner:
         )
         page.on(
             "response",
-            lambda response: error_responses.append(
-                {"url": response.url, "status": response.status}
-            )
-            if response.status >= 400
-            else None,
+            lambda response: (
+                error_responses.append({"url": response.url, "status": response.status})
+                if response.status >= 400
+                else None
+            ),
         )
 
         started = time.perf_counter()
         response: Response | None = None
         try:
-            response = await page.goto(
-                url, wait_until="domcontentloaded", timeout=self.config.timeout_ms
-            )
-            await page.wait_for_timeout(250)
+            response = await page.goto(url, wait_until="domcontentloaded", timeout=self.config.timeout_ms)
+            try:
+                await page.wait_for_load_state("load", timeout=min(self.config.timeout_ms, 3_000))
+            except Exception:
+                pass
+            await page.wait_for_timeout(500)
             duration_ms = round((time.perf_counter() - started) * 1000)
             snapshot = await page.evaluate(SNAPSHOT_SCRIPT)
+            performance = await page.evaluate(PERFORMANCE_SNAPSHOT_SCRIPT)
             html = await page.content()
             headers = await response.all_headers() if response else {}
             screenshot = await self._take_screenshot(page, url, viewport.name)
@@ -166,6 +240,7 @@ class WebScanner:
                     duration_ms=duration_ms,
                     viewport=viewport.name,
                     screenshot=screenshot,
+                    performance=performance,
                 )
             )
 
@@ -175,18 +250,36 @@ class WebScanner:
             for finding in run_visual_checks(snapshot, final_url, viewport.name):
                 self._attach_screenshot(finding, screenshot)
                 self.report.add_finding(finding)
-            for finding in run_security_checks(
-                url=final_url, headers=headers, html=html, viewport=viewport.name
+            for finding in run_form_checks(snapshot, final_url, viewport.name):
+                self._attach_screenshot(finding, screenshot)
+                self.report.add_finding(finding)
+            for finding in run_performance_checks(
+                performance, final_url, viewport.name, self.config.performance_budgets
             ):
                 self._attach_screenshot(finding, screenshot)
                 self.report.add_finding(finding)
+            for finding in run_security_checks(url=final_url, headers=headers, html=html, viewport=viewport.name):
+                self._attach_screenshot(finding, screenshot)
+                self.report.add_finding(finding)
+
+            try:
+                accessibility_findings = await run_accessibility_checks(
+                    page, final_url, viewport.name, self.config.accessibility_tags
+                )
+            except Exception as exc:
+                self.report.scanner_errors.append(
+                    {"url": final_url, "error": f"axe-core accessibility audit failed: {exc}"}
+                )
+            else:
+                for finding in accessibility_findings:
+                    self._attach_screenshot(finding, screenshot)
+                    self.report.add_finding(finding)
 
             self._add_runtime_findings(
                 url=final_url,
                 viewport=viewport.name,
                 screenshot=screenshot,
                 status=response.status if response else None,
-                duration_ms=duration_ms,
                 console_errors=console_errors,
                 page_errors=page_errors,
                 failed_requests=failed_requests,
@@ -222,7 +315,6 @@ class WebScanner:
         viewport: str,
         screenshot: str | None,
         status: int | None,
-        duration_ms: int,
         console_errors: list[str],
         page_errors: list[str],
         failed_requests: list[dict[str, str]],
@@ -277,28 +369,11 @@ class WebScanner:
                     viewport=viewport,
                 )
             )
-        if duration_ms > 3_000:
-            runtime_findings.append(
-                Finding(
-                    "performance.slow-dom-content",
-                    "Page reached DOM content slowly",
-                    Category.PERFORMANCE,
-                    Severity.MEDIUM if duration_ms > 5_000 else Severity.LOW,
-                    Confidence.CONFIRMED,
-                    url,
-                    "DOMContentLoaded exceeded the initial three-second performance budget.",
-                    evidence={"duration_ms": duration_ms, "budget_ms": 3_000},
-                    recommendation="Profile server response time and render-blocking resources.",
-                    viewport=viewport,
-                )
-            )
         for finding in runtime_findings:
             self._attach_screenshot(finding, screenshot)
             self.report.add_finding(finding)
 
-    async def _take_screenshot(
-        self, page: Page, url: str, viewport: str, tolerate_failure: bool = False
-    ) -> str | None:
+    async def _take_screenshot(self, page: Page, url: str, viewport: str, tolerate_failure: bool = False) -> str | None:
         parsed = urlparse(url)
         slug = re.sub(r"[^a-zA-Z0-9_-]+", "-", f"{parsed.netloc}{parsed.path}").strip("-")
         slug = (slug or "home")[:100]
@@ -323,4 +398,3 @@ async def scan(config: ScanConfig, output_dir: Path) -> ScanReport:
 
 def run_scan(config: ScanConfig, output_dir: Path) -> ScanReport:
     return asyncio.run(scan(config, output_dir))
-

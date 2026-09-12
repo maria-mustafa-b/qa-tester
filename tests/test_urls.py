@@ -13,4 +13,3 @@ def test_scope_and_blocked_patterns() -> None:
     assert url_is_allowed("https://example.com/docs", ["example.com"], ["/delete"])
     assert not url_is_allowed("https://example.com/delete/1", ["example.com"], ["/delete"])
     assert not url_is_allowed("https://other.example/docs", ["example.com"], [])
-

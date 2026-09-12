@@ -63,6 +63,7 @@ class PageResult:
     duration_ms: int
     viewport: str
     screenshot: str | None = None
+    performance: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -99,10 +100,12 @@ class ScanReport:
             key=lambda item: (severity_order[item.severity], item.category.value, item.url),
         )
         counts: dict[str, int] = {severity.value: 0 for severity in Severity}
+        category_counts: dict[str, int] = {category.value: 0 for category in Category}
         for finding in findings:
             counts[finding.severity.value] += 1
+            category_counts[finding.category.value] += 1
         return {
-            "schema_version": "1.0",
+            "schema_version": "1.1",
             "scanner": {"name": "Preflight QA", "version": __import__("preflight_qa").__version__},
             "target": self.target,
             "started_at": self.started_at,
@@ -111,6 +114,7 @@ class ScanReport:
                 "pages_tested": len(self.pages),
                 "findings": len(findings),
                 "by_severity": counts,
+                "by_category": category_counts,
                 "scanner_errors": len(self.scanner_errors),
             },
             "pages": [page.to_dict() for page in self.pages],
@@ -118,4 +122,3 @@ class ScanReport:
             "skipped_urls": self.skipped_urls,
             "scanner_errors": self.scanner_errors,
         }
-

@@ -26,4 +26,3 @@ def url_is_allowed(url: str, allowed_hosts: list[str], blocked_patterns: list[st
         return False
     lowered = url.lower()
     return not any(pattern.lower() in lowered for pattern in blocked_patterns)
-

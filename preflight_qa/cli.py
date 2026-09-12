@@ -72,4 +72,3 @@ def _result_exit_code(data: dict, fail_on: str) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -6,6 +6,11 @@
   <p>Lorem ipsum placeholder content.</p>
   <button></button>
   <img src="/missing-image.png">
+  <form action="/login" method="get">
+    <input type="password" required>
+    <input type="number" name="age" min="100" max="10">
+    <button type="submit">Sign in</button>
+  </form>
   <div style="width:1800px">This element deliberately causes horizontal overflow.</div>
   <a href="/healthy.html">Healthy page</a>
   <a href="/missing.html">Broken page</a>
@@ -13,4 +18,3 @@
   <script>setTimeout(() => { throw new Error('Deliberate demo error'); }, 20);</script>
 </body>
 </html>
-

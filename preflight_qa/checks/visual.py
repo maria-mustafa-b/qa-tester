@@ -40,4 +40,3 @@ def run_visual_checks(snapshot: dict[str, Any], url: str, viewport: str) -> list
             )
         )
     return findings
-

@@ -60,7 +60,7 @@ def run_content_checks(snapshot: dict[str, Any], url: str, viewport: str) -> lis
                     viewport=viewport,
                     description="An image has no alt attribute.",
                     evidence={"element": image.get("selector"), "source": image.get("src")},
-                    recommendation="Add meaningful alt text, or alt=\"\" if the image is decorative.",
+                    recommendation='Add meaningful alt text, or alt="" if the image is decorative.',
                 )
             )
         if image.get("complete") and image.get("natural_width") == 0:
@@ -113,4 +113,3 @@ def run_content_checks(snapshot: dict[str, Any], url: str, viewport: str) -> lis
                 )
             )
     return findings
-

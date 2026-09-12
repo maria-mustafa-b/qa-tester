@@ -11,7 +11,7 @@ in-scope pages and produces reproducible findings before deployment. It combines
 visual, content, performance, crash, accessibility and passive security signals in one JSON and
 HTML report.
 
-This repository contains the first working milestone. The current engine is deterministic; an AI
+This repository contains the second working milestone. The current engine is deterministic; an AI
 planning and triage layer will be introduced only after the underlying evidence is reliable.
 
 ## Current capabilities
@@ -23,11 +23,15 @@ planning and triage layer will be introduced only after the underlying evidence 
 - JavaScript exception and error-level console collection.
 - Full-page screenshots attached to findings.
 - Horizontal overflow and off-viewport element checks.
+- Automated WCAG 2.0, 2.1 and 2.2 accessibility rules powered by bundled axe-core.
 - Missing titles, page language, image alt text and accessible control names.
+- Passive form inspection for unsafe password submission, transport downgrade, invalid ranges and
+  required controls that cannot be submitted.
 - Broken image and placeholder-content detection.
 - Missing security header, insecure transport and exposed credential-pattern checks.
-- Basic page performance budget for DOM content loading.
+- Configurable TTFB, FCP, LCP, CLS, transfer-size and request-count budgets.
 - Deterministic JSON and standalone HTML reports.
+- Finding filters, category totals and per-page performance metrics in reports.
 - CI-friendly exit codes based on configurable severity.
 
 ## Safety model
@@ -110,6 +114,18 @@ blocked_url_patterns:
   - /delete
   - /remove
   - /purchase
+accessibility_tags:
+  - wcag2a
+  - wcag2aa
+  - wcag21aa
+  - wcag22aa
+performance_budgets:
+  ttfb_ms: 800
+  fcp_ms: 1800
+  lcp_ms: 2500
+  cls: 0.1
+  transfer_kb: 3000
+  request_count: 100
 viewports:
   - name: desktop
     width: 1440
@@ -139,10 +155,10 @@ CLI
  └── Configuration and scope validation
       └── Playwright crawler
            ├── Runtime and functional evidence
-           ├── Content and accessibility checks
+           ├── Content, form and axe-core accessibility checks
            ├── Responsive visual checks
            ├── Passive security checks
-           └── Performance budget
+           └── Browser performance budgets
                 └── Normalized findings
                      ├── report.json
                      └── report.html + screenshots
@@ -169,9 +185,8 @@ ruff check .
 pytest -q
 ```
 
-The unit suite covers configuration validation, URL scope enforcement, deterministic checks, secret
-redaction and report creation. Browser-level integration tests will be added alongside the next
-milestone.
+The unit suite covers configuration validation, URL scope enforcement, axe result normalization,
+form rules, performance budgets, secret redaction and report creation.
 
 ## Report semantics
 
@@ -193,9 +208,10 @@ redacted before it is written to disk.
 - [x] Safe crawler and evidence collection
 - [x] Functional, crash, content, responsive and passive security baseline
 - [x] JSON and HTML reports
-- [ ] axe-core WCAG rule integration
-- [ ] Lighthouse/Core Web Vitals integration
-- [ ] Forms and developer-defined smoke flows
+- [x] axe-core WCAG rule integration
+- [x] Browser-native Core Web Vitals and page-weight budgets
+- [x] Passive form analysis
+- [ ] Developer-defined smoke flows
 - [ ] Baseline visual regression comparison
 - [ ] Authenticated multi-role access-control checks
 - [ ] OWASP ZAP passive-scan integration
@@ -206,9 +222,11 @@ redacted before it is written to disk.
 ## Current limitations
 
 - The scanner does not prove that a website is secure or WCAG compliant.
-- It does not currently submit forms or infer application-specific business rules.
+- It does not submit forms or infer application-specific business rules; passive form checks inspect
+  markup only.
 - Visual checks use browser geometry; pixel-baseline comparison is planned.
-- Performance currently measures navigation timing rather than full Lighthouse audits or load.
+- Performance metrics are single synthetic browser observations, not a Lighthouse score or real-user
+  field data.
 - The crawler does not test native mobile or desktop applications.
 - Dynamic applications may require authentication and workflow definitions in future releases.
 

@@ -10,6 +10,18 @@ blocked_url_patterns:
   - /delete
   - /remove
   - /purchase
+accessibility_tags:
+  - wcag2a
+  - wcag2aa
+  - wcag21aa
+  - wcag22aa
+performance_budgets:
+  ttfb_ms: 800
+  fcp_ms: 1800
+  lcp_ms: 2500
+  cls: 0.1
+  transfer_kb: 3000
+  request_count: 100
 viewports:
   - name: desktop
     width: 1440
@@ -18,4 +30,3 @@ viewports:
     width: 390
     height: 844
 fail_on: high
-

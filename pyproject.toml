@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "preflight-qa"
-version = "0.1.0"
+version = "0.2.0"
 description = "Evidence-first pre-release quality scanner for web applications"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -19,7 +19,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=8.0,<9",
-  "pytest-asyncio>=0.24,<1",
   "ruff>=0.9,<1",
 ]
 
@@ -30,11 +29,10 @@ preflight-qa = "preflight_qa.cli:main"
 include = ["preflight_qa*"]
 
 [tool.setuptools.package-data]
-preflight_qa = ["templates/*.html"]
+preflight_qa = ["templates/*.html", "vendor/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 120

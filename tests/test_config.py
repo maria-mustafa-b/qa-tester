@@ -23,3 +23,13 @@ def test_unknown_configuration_field_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="unknown configuration"):
         load_config(path)
 
+
+def test_nested_performance_budgets_are_loaded(tmp_path: Path) -> None:
+    path = tmp_path / "config.yml"
+    path.write_text(
+        "target: https://example.com\nperformance_budgets:\n  lcp_ms: 3000\n",
+        encoding="utf-8",
+    )
+    config = load_config(path)
+    assert config.performance_budgets.lcp_ms == 3000
+    assert config.performance_budgets.cls == 0.1

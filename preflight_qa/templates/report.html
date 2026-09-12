@@ -20,6 +20,8 @@
     .metric { padding:18px; }
     .metric strong { display:block; font-size:28px; }
     .panel { padding:22px; margin-top:20px; overflow:hidden; }
+    .controls { display:flex; gap:10px; flex-wrap:wrap; margin:4px 0 18px; }
+    select { color:var(--text); background:#080b13; border:1px solid var(--line); border-radius:9px; padding:9px 12px; }
     .finding { padding:20px; margin:12px 0; }
     .finding-head { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; }
     .finding h3 { margin:5px 0 5px; font-size:17px; }
@@ -56,9 +58,13 @@
 
   <section class="panel">
     <h2>Findings</h2>
+    <div class="controls" aria-label="Finding filters">
+      <label class="muted">Severity <select id="severity-filter"><option value="">All</option>{% for name in report.summary.by_severity %}<option value="{{ name }}">{{ name }}</option>{% endfor %}</select></label>
+      <label class="muted">Category <select id="category-filter"><option value="">All</option>{% for name in report.summary.by_category %}<option value="{{ name }}">{{ name }}</option>{% endfor %}</select></label>
+    </div>
     {% if report.findings %}
       {% for finding in report.findings %}
-      <article class="finding">
+      <article class="finding" data-severity="{{ finding.severity }}" data-category="{{ finding.category }}">
         <div class="finding-head">
           <div>
             <div class="tags"><span class="tag {{ finding.severity }}">{{ finding.severity }}</span><span class="tag">{{ finding.category }}</span><span class="tag">{{ finding.confidence }}</span></div>
@@ -81,13 +87,22 @@
 
   <section class="panel">
     <h2>Tested pages</h2>
-    <table><thead><tr><th>URL</th><th>Status</th><th>Viewport</th><th>Duration</th></tr></thead><tbody>
-      {% for page in report.pages %}<tr><td><code>{{ page.final_url }}</code></td><td>{{ page.status or "—" }}</td><td>{{ page.viewport }}</td><td>{{ page.duration_ms }} ms</td></tr>{% endfor %}
+    <table><thead><tr><th>URL</th><th>Status</th><th>Viewport</th><th>TTFB</th><th>FCP</th><th>LCP</th><th>CLS</th><th>Weight</th></tr></thead><tbody>
+      {% for page in report.pages %}<tr><td><code>{{ page.final_url }}</code></td><td>{{ page.status or "—" }}</td><td>{{ page.viewport }}</td><td>{{ page.performance.ttfb_ms | round | int if page.performance.ttfb_ms is not none else "—" }}{% if page.performance.ttfb_ms is not none %} ms{% endif %}</td><td>{{ page.performance.fcp_ms | round | int if page.performance.fcp_ms is not none else "—" }}{% if page.performance.fcp_ms is not none %} ms{% endif %}</td><td>{{ page.performance.lcp_ms | round | int if page.performance.lcp_ms is not none else "—" }}{% if page.performance.lcp_ms is not none %} ms{% endif %}</td><td>{{ page.performance.cls | round(3) if page.performance.cls is not none else "—" }}</td><td>{{ page.performance.transfer_kb | round | int if page.performance.transfer_kb is not none else "—" }}{% if page.performance.transfer_kb is not none %} KB{% endif %}</td></tr>{% endfor %}
     </tbody></table>
   </section>
 
   <p class="muted">Generated {{ report.finished_at }} · Automated results do not replace manual usability, accessibility or security assessment.</p>
 </main>
+<script>
+  const filters = [document.querySelector('#severity-filter'), document.querySelector('#category-filter')];
+  const applyFilters = () => {
+    const [severity, category] = filters.map(item => item.value);
+    document.querySelectorAll('.finding').forEach(item => {
+      item.hidden = Boolean((severity && item.dataset.severity !== severity) || (category && item.dataset.category !== category));
+    });
+  };
+  filters.forEach(item => item.addEventListener('change', applyFilters));
+</script>
 </body>
 </html>
-
