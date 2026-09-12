@@ -1,0 +1,16 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title></title></head>
+<body>
+  <h1>Preflight QA deliberately imperfect demo</h1>
+  <p>Lorem ipsum placeholder content.</p>
+  <button></button>
+  <img src="/missing-image.png">
+  <div style="width:1800px">This element deliberately causes horizontal overflow.</div>
+  <a href="/healthy.html">Healthy page</a>
+  <a href="/missing.html">Broken page</a>
+  <a href="/delete/account">Unsafe route that must not be visited</a>
+  <script>setTimeout(() => { throw new Error('Deliberate demo error'); }, 20);</script>
+</body>
+</html>
+

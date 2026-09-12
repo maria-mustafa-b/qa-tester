@@ -2,7 +2,7 @@
 
 > Evidence-first pre-release quality scanning for web applications.
 
-[![CI](https://github.com/maria-mustafa-b/preflight-qa/actions/workflows/ci.yml/badge.svg)](https://github.com/maria-mustafa-b/preflight-qa/actions/workflows/ci.yml)
+[![CI](https://github.com/maria-mustafa-b/qa-tester/actions/workflows/ci.yml/badge.svg)](https://github.com/maria-mustafa-b/qa-tester/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
@@ -47,8 +47,8 @@ Requirements:
 - Linux, macOS or Windows
 
 ```bash
-git clone https://github.com/maria-mustafa-b/preflight-qa.git
-cd preflight-qa
+git clone https://github.com/maria-mustafa-b/qa-tester.git
+cd qa-tester
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
@@ -222,4 +222,3 @@ the private reporting process in [SECURITY.md](SECURITY.md).
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE).
-

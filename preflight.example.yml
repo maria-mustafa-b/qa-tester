@@ -1,0 +1,21 @@
+target: http://127.0.0.1:8080
+max_pages: 20
+timeout_ms: 10000
+headless: true
+ignore_https_errors: false
+allowed_hosts:
+  - 127.0.0.1
+blocked_url_patterns:
+  - /logout
+  - /delete
+  - /remove
+  - /purchase
+viewports:
+  - name: desktop
+    width: 1440
+    height: 900
+  - name: mobile
+    width: 390
+    height: 844
+fail_on: high
+

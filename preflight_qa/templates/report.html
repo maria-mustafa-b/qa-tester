@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Preflight QA Report</title>
+  <style>
+    :root { color-scheme: dark; --bg:#090d18; --panel:#121827; --muted:#91a0b8; --line:#263149; --text:#f4f7fb; --accent:#7c9cff; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:radial-gradient(circle at top left,#17203a 0,#090d18 42%); color:var(--text); font:15px/1.55 Inter,ui-sans-serif,system-ui,sans-serif; }
+    main { width:min(1180px,calc(100% - 32px)); margin:0 auto; padding:54px 0 80px; }
+    header { display:flex; justify-content:space-between; gap:24px; align-items:flex-end; margin-bottom:30px; }
+    h1 { margin:0; font-size:clamp(30px,5vw,50px); letter-spacing:-.04em; }
+    h2 { margin:0 0 16px; font-size:20px; }
+    .eyebrow { color:var(--accent); font-weight:750; letter-spacing:.14em; text-transform:uppercase; font-size:12px; }
+    .muted { color:var(--muted); }
+    .target { max-width:620px; overflow-wrap:anywhere; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin:24px 0 34px; }
+    .metric,.panel,.finding { background:rgba(18,24,39,.92); border:1px solid var(--line); border-radius:16px; }
+    .metric { padding:18px; }
+    .metric strong { display:block; font-size:28px; }
+    .panel { padding:22px; margin-top:20px; overflow:hidden; }
+    .finding { padding:20px; margin:12px 0; }
+    .finding-head { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; }
+    .finding h3 { margin:5px 0 5px; font-size:17px; }
+    .tags { display:flex; gap:7px; flex-wrap:wrap; }
+    .tag { border:1px solid var(--line); border-radius:999px; padding:3px 9px; font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+    .critical { color:#ff7890; border-color:#7c3040; } .high { color:#ff9b72; border-color:#784632; }
+    .medium { color:#ffd36b; border-color:#68572d; } .low { color:#7dd9ff; border-color:#285a71; } .info { color:#9aa9c2; }
+    code { color:#c6d2ff; overflow-wrap:anywhere; }
+    details { margin-top:13px; }
+    summary { cursor:pointer; color:#bcc9df; }
+    pre { white-space:pre-wrap; background:#080b13; padding:14px; border-radius:10px; overflow:auto; color:#b9c8e2; }
+    img { display:block; max-width:100%; margin-top:14px; border:1px solid var(--line); border-radius:10px; }
+    table { width:100%; border-collapse:collapse; }
+    th,td { text-align:left; padding:11px 9px; border-bottom:1px solid var(--line); vertical-align:top; }
+    th { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.06em; }
+    @media (max-width:700px) { header { align-items:flex-start; flex-direction:column; } .finding-head { flex-direction:column; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div><div class="eyebrow">Evidence-first release check</div><h1>Preflight QA</h1></div>
+    <div class="muted target">Target<br><code>{{ report.target }}</code></div>
+  </header>
+
+  <section class="grid" aria-label="Scan summary">
+    <div class="metric"><span class="muted">Pages tested</span><strong>{{ report.summary.pages_tested }}</strong></div>
+    <div class="metric"><span class="muted">Total findings</span><strong>{{ report.summary.findings }}</strong></div>
+    <div class="metric"><span class="muted">Critical</span><strong>{{ report.summary.by_severity.critical }}</strong></div>
+    <div class="metric"><span class="muted">High</span><strong>{{ report.summary.by_severity.high }}</strong></div>
+    <div class="metric"><span class="muted">Medium</span><strong>{{ report.summary.by_severity.medium }}</strong></div>
+    <div class="metric"><span class="muted">Scanner errors</span><strong>{{ report.summary.scanner_errors }}</strong></div>
+  </section>
+
+  <section class="panel">
+    <h2>Findings</h2>
+    {% if report.findings %}
+      {% for finding in report.findings %}
+      <article class="finding">
+        <div class="finding-head">
+          <div>
+            <div class="tags"><span class="tag {{ finding.severity }}">{{ finding.severity }}</span><span class="tag">{{ finding.category }}</span><span class="tag">{{ finding.confidence }}</span></div>
+            <h3>{{ finding.title }}</h3>
+            <code>{{ finding.url }}</code>{% if finding.viewport %}<span class="muted"> · {{ finding.viewport }}</span>{% endif %}
+          </div>
+          <code>{{ finding.rule_id }}</code>
+        </div>
+        <p>{{ finding.description }}</p>
+        {% if finding.recommendation %}<p><strong>Recommendation:</strong> {{ finding.recommendation }}</p>{% endif %}
+        {% if finding.evidence %}
+        <details><summary>View evidence</summary><pre>{{ finding.evidence | tojson(indent=2) }}</pre>
+          {% if finding.evidence.screenshot %}<img src="{{ finding.evidence.screenshot }}" alt="Screenshot evidence for {{ finding.title }}">{% endif %}
+        </details>
+        {% endif %}
+      </article>
+      {% endfor %}
+    {% else %}<p>No findings were produced by the enabled checks.</p>{% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Tested pages</h2>
+    <table><thead><tr><th>URL</th><th>Status</th><th>Viewport</th><th>Duration</th></tr></thead><tbody>
+      {% for page in report.pages %}<tr><td><code>{{ page.final_url }}</code></td><td>{{ page.status or "—" }}</td><td>{{ page.viewport }}</td><td>{{ page.duration_ms }} ms</td></tr>{% endfor %}
+    </tbody></table>
+  </section>
+
+  <p class="muted">Generated {{ report.finished_at }} · Automated results do not replace manual usability, accessibility or security assessment.</p>
+</main>
+</body>
+</html>
+
